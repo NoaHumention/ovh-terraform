@@ -2,3 +2,4 @@
 terraform.tfstate
 terraform.tfstate.backup
 standard_vars.tfvars
+standard_vars.auto.tfvars
