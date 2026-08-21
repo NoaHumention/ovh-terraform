@@ -37,10 +37,7 @@ module "IAM" {
 
   user_types = {
 
-    # --- BRONZE (raw) zone ---
-    # Ingestion jobs land raw data as-is. Write-only, no read/delete:
-    # this role should never need to read back or mutate what it wrote,
-    # which limits blast radius if the role's credentials are compromised.
+    # --- BRONZE  ---
     ingestion = {
       permissions = {
         bronze = [
@@ -50,16 +47,12 @@ module "IAM" {
       }
     }
 
-    # --- BRONZE -> SILVER transformation ---
-    # Processing/ETL reads raw data from bronze and writes cleansed,
-    # conformed data to silver. No delete permissions on either zone,
-    # and no access to gold — this role shouldn't be able to publish
-    # directly to the business-facing layer.
+    # --- BRONZE -> SILVER ---
     processing = {
       permissions = {
         bronze = [
           "s3:ListBucket",
-          "s3:GetObject"    # read-only from bronze — never writes back to raw
+          "s3:GetObject"    # read-only from bronze
         ]
         silver = [
           "s3:ListBucket",
@@ -68,11 +61,7 @@ module "IAM" {
       }
     }
 
-    # --- SILVER -> GOLD curation ---
-    # Processing silver to gold. Without this role,
-    # nothing ever populates the gold bucket. Curation jobs read
-    # conformed data from silver and publish business-ready,
-    # aggregated datasets to gold.
+    # --- SILVER -> GOLD ---
     curation = {
       permissions = {
         silver = [
@@ -86,15 +75,13 @@ module "IAM" {
       }
     }
 
-    # --- GOLD (consumption) zone ---
-    # Analytics/BI tools and end users only ever read from gold.
-    # Strictly read-only — no write/delete, so a compromised or
-    # misconfigured BI tool can't corrupt the business-facing layer.
+    # --- GOLD ---
+    # For analysis, so you do not write back to the curated data.
     analytics = {
       permissions = {
         gold = [
           "s3:ListBucket",
-          "s3:GetObject"
+          "s3:GetObject" # read-only from gold
         ]
       }
     }
