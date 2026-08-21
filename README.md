@@ -1,7 +1,3 @@
-Yes. I’d make this README explain not just *what the repository contains*, but also the learning path, how the configuration files work, how modules fit together, and how it relates to your application repository.
-
-I’d also update the provider version wording: the OVH provider is actively updated, so I would avoid hard-coding an old version in the general documentation unless the repository itself pins one. The current Terraform Registry documentation lists `ovh/ovh` as the provider, and OVH’s own documentation recommends using the provider and environment variables for credentials. ([Terraform Registry][1])
-
 # Terraform on OVH
 
 This repository contains my experiments and learning project for using **Terraform to create and manage infrastructure on OVHcloud**.
