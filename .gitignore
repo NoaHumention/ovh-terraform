@@ -1,5 +1,7 @@
 /.terraform
 terraform.tfstate
+terraform.tfstate.lock.info
+terraform.lock.hcl
 terraform.tfstate.backup
 standard_vars.tfvars
 standard_vars.auto.tfvars

@@ -1,5 +1,0 @@
-# Make sure to include a .auto.tfvars file, with variables like this:
-
-service_name = "project_id"
-region = "GRA11"
-instance_names = ["terraform-testing"]
