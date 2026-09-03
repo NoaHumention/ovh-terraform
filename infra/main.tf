@@ -119,5 +119,5 @@ module "vectordb" {
 
   service_name = var.service_name
   region       = "GRA"
-  allowed_ip   = "92.66.52.141/32"   # get via `curl ifconfig.me`, or use var.allowed_ip
+  allowed_ip   = var.allowed_ip
 }

@@ -30,3 +30,8 @@ variable "master_count" {
   type        = number
   default     = 1
 }
+
+variable "allowed_ip" {
+  type        = string
+  description = "Your IP in CIDR notation, allowed to connect to the DB"
+}

@@ -3,3 +3,4 @@
 service_name = "project_id"
 region = "GRA11"
 instance_names = ["terraform-testing"]
+allowed_ip = "1.2.3.4/32"  # your public IP in CIDR form, e.g. via `curl ifconfig.me`
