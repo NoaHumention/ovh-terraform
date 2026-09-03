@@ -1,59 +1,81 @@
+import json
 import logging
-import boto3
-from botocore.exceptions import ClientError
 import os
+import subprocess
+from pathlib import Path
 
-# START
+import boto3
+from dotenv import load_dotenv
+from botocore.exceptions import ClientError
 
-# CONFIGURATION
-#     source_directory = raw_data/
-#     bronze_bucket = ...
 
-# CONNECT
-#     get Object Storage credentials
-#     create S3-compatible client
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-# INGEST
-#     find all files in source_directory
+# Project paths
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+INFRA_DIRECTORY = PROJECT_ROOT / "infra"
+SOURCE_DIRECTORY = PROJECT_ROOT / "raw_data"
 
-#     FOR each file:
-#         filename = ...
-#         bronze_key = ...
+load_dotenv(PROJECT_ROOT / ".env")
 
-#         upload file to bronze_bucket using bronze_key
 
-#         IF upload succeeded:
-#             log success
-#         ELSE:
-#             log error
+def get_storage_names():
+    result = subprocess.run(
+        ["terraform", "output", "-json", "storage_names"],
+        cwd=INFRA_DIRECTORY,
+        capture_output=True,
+        text=True
+    )
 
-# END
+    if result.returncode != 0:
+        logging.error("Terraform command failed:")
+        logging.error(result.stderr)
+        raise RuntimeError("Could not retrieve Terraform storage names")
 
-source_directory = "raw_data/"
+    return json.loads(result.stdout)
 
-# Get bronze bucket name from terraform variable
-bronze_bucket = "infra/modules/storage/output.tf"
 
-def upload_file(file_name, bucket, object_name=None):
-    """Upload a file to an S3 bucket
+# Configuration
+endpoint_url = os.environ["OVH_S3_ENDPOINT"]
+access_key = os.environ["OVH_S3_ACCESS_KEY_INGESTION"]
+secret_key = os.environ["OVH_S3_SECRET_KEY_INGESTION"]
 
-    :param file_name: File to upload
-    :param bucket: Bucket to upload to
-    :param object_name: S3 object name. If not specified then file_name is used
-    :return: True if file was uploaded, else False
-    """
+storage_names = get_storage_names()
+bronze_bucket = storage_names["bronze"]
 
-    # If S3 object_name was not specified, use file_name
-    if object_name is None:
-        object_name = os.path.basename(file_name)
 
-    # Upload the file
-    s3_client = boto3.client('s3')
+# Connect
+s3_client = boto3.client(
+    "s3",
+    endpoint_url=endpoint_url,
+    aws_access_key_id=access_key,
+    aws_secret_access_key=secret_key
+)
+
+
+# Ingest
+for file_path in SOURCE_DIRECTORY.iterdir():
+
+    if not file_path.is_file():
+        continue
+
+    object_name = file_path.name
+
     try:
-        response = s3_client.upload_file(file_name, bucket, object_name)
+        s3_client.upload_file(
+            str(file_path),
+            bronze_bucket,
+            object_name
+        )
+
+        logging.info(
+            "Uploaded %s to Bronze",
+            file_path
+        )
+
     except ClientError as e:
-        logging.error(e)
-        return False
-    return True
-
-
+        logging.error(
+            "Failed to upload %s: %s",
+            file_path,
+            e
+        )

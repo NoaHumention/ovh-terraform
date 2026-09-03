@@ -2,7 +2,7 @@
 
 This repository contains my experiments and learning project for using **Terraform to create and manage infrastructure on OVHcloud**.
 
-The ultimate goal of this project is to learn how to build a **data lake on OVHcloud using Infrastructure as Code (IaC)**.
+The ultimate goal of this project is to learn how to build a **data lake and a small RAG (retrieval-augmented generation) pipeline on OVHcloud using Infrastructure as Code (IaC)**: raw files go in one end, and searchable vector embeddings come out the other, with Terraform describing every piece of infrastructure in between.
 
 Instead of manually creating every resource in the OVHcloud Control Panel, Terraform allows the infrastructure to be described as code. Terraform can then create, update and remove the infrastructure based on that configuration.
 
@@ -55,9 +55,11 @@ IAM
       ↓
 Terraform modules
       ↓
-Data lake infrastructure
+Data lake infrastructure (bronze / silver / gold)
       ↓
-Application deployment
+Vector database (pgvector) + embeddings
+      ↓
+Automated pipeline (scheduled runs)
 ```
 
 This makes the repository both a working Terraform project and a learning exercise.
@@ -110,24 +112,36 @@ This is especially useful when learning Terraform because the goal is to underst
 
 # Project structure
 
-The project is split into Terraform modules.
-
-A simplified structure looks like:
+The project has two halves: the **infrastructure** (Terraform, in `infra/`) and the **pipeline** that runs on top of it (Python, in `pipeline/`).
 
 ```text
-terraform/
-├── main.tf
-├── variables.tf
-├── terraform.tf
-├── standard_vars_auto.tfvars
+.
+├── infra/
+│   ├── main.tf
+│   ├── locals.tf
+│   ├── variables.tf
+│   ├── output.tf
+│   ├── terraform.tf
+│   ├── standard_vars.auto.tfvars
+│   │
+│   └── modules/
+│       ├── network/     # private network + subnet
+│       ├── compute/     # master/worker instances
+│       ├── storage/     # bronze / silver / gold buckets
+│       ├── IAM/         # one scoped user + S3 credentials per pipeline stage
+│       └── vectordb/    # managed PostgreSQL (pgvector) for embeddings
 │
-├── modules/
-│   ├── network/
-│   ├── compute/
-│   ├── storage/
-│   └── IAM/
+├── pipeline/
+│   ├── ingestion/       # raw_data/ -> bronze
+│   ├── processing/      # bronze -> silver (extract + clean text)
+│   ├── curation/        # silver -> gold (chunk text)
+│   ├── embedding/       # gold -> vectordb (embed chunks, Dutch model)
+│   ├── analytics/       # query the pipeline's output
+│   ├── run_pipeline.py  # runs all stages in order
+│   └── watch_and_run.py # the "cron" entry point (see below)
 │
-└── standard_vars_auto.tfvars.example
+├── raw_data/             # drop files here to be picked up by the pipeline
+└── standard_vars.auto.tfvars.example
 ```
 
 ---
@@ -154,9 +168,16 @@ storage module
     └── gold bucket
 
 IAM module
-    ├── ingestion user
-    ├── processing user
-    └── analytics user
+    ├── ingestion user   (write bronze)
+    ├── processing user  (read bronze, write silver)
+    ├── curation user    (read silver, write gold)
+    ├── embedding user   (read gold)
+    └── analytics user   (read gold)
+
+vectordb module
+    ├── managed PostgreSQL cluster
+    ├── database
+    └── application user
 ```
 
 The root Terraform configuration can then connect these modules together.
@@ -186,6 +207,60 @@ You can also find existing modules in the Terraform Registry:
 [Terraform Registry - Modules](https://registry.terraform.io/browse/modules)
 
 Terraform supports both locally-created modules and modules published in the Terraform Registry. ([HashiCorp Developer][2])
+
+---
+
+# The data pipeline
+
+Once the infrastructure exists, `pipeline/` moves data through it, one stage per script:
+
+```text
+raw_data/ (local folder)
+    │
+    ▼  pipeline/ingestion/ingest.py
+Bronze bucket        — raw files, as uploaded
+    │
+    ▼  pipeline/processing/process.py
+Silver bucket        — extracted, cleaned text
+    │
+    ▼  pipeline/curation/curate.py
+Gold bucket           — chunked text
+    │
+    ▼  pipeline/embedding/embed.py
+vectordb (Postgres/pgvector) — chunk text + embedding vector
+```
+
+Each stage is a standalone script, runnable on its own:
+
+```bash
+python -m pipeline.ingestion.ingest
+```
+
+or run the whole pipeline in order (stops at the first failure):
+
+```bash
+python -m pipeline.run_pipeline
+```
+
+Chunks are embedded locally with a Dutch sentence-transformers model
+(`NetherlandsForensicInstitute/robbert-2022-dutch-sentence-transformers`) —
+no API key needed. Already-embedded chunks are skipped on re-runs.
+
+See [pipeline/README.md](pipeline/README.md) for setup details (including
+why the pipeline's `.venv` needs to live in WSL on Windows, not natively).
+
+## Automatic runs ("cron")
+
+`pipeline/watch_and_run.py` checks `raw_data/` against a manifest of what
+it saw last time; if anything is new or changed, it runs the full pipeline
+above. It's meant to be triggered periodically rather than run as a
+long-lived process.
+
+On this machine that's wired up as a Windows Task Scheduler task
+(`TerraformTesting-PipelineWatcher`) that fires every 10 minutes and shells
+into WSL, since that's where `terraform` and the pipeline's Python
+environment live. See [pipeline/README.md](pipeline/README.md) for how to
+(re)register it.
 
 ---
 
@@ -380,6 +455,10 @@ Terraform will normally ask you to confirm the changes.
 
 The OVHcloud documentation also uses the standard `terraform init` and `terraform apply` workflow. ([OVHcloud Documentation][3])
 
+Note that some resources in this project — the `vectordb` module's managed
+PostgreSQL cluster in particular — are billed by OVHcloud for as long as
+they exist. Check current pricing before applying.
+
 ---
 
 # Understanding Terraform dependencies
@@ -446,6 +525,7 @@ modules/
 ├── compute/
 ├── storage/
 ├── IAM/
+├── vectordb/
 ├── kubernetes/
 └── monitoring/
 ```

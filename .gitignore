@@ -5,3 +5,11 @@ terraform.lock.hcl
 terraform.tfstate.backup
 standard_vars.tfvars
 standard_vars.auto.tfvars
+/skills
+
+.env
+.venv
+
+__pycache__
+
+pipeline/.state/
